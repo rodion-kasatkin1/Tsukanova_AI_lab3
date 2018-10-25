@@ -41,51 +41,54 @@ public class Perseptron {
         }
         return input;
     }
+    //обратное распространение ошибки
+    private void doBackPropagationError(List<Double> trueOutput){
+        double[] error = new double[neuronLayers.get(neuronLayers.size() - 1).getCountoutput()]; //количество ошибок равно количеству выходов последнего слоя
+        List<double[]> df = new ArrayList<>();
+        List<double[]> sums = new ArrayList<>();
+        //начинаем с конца
+        for (int k = neuronLayers.size() - 1; k >= 0; k--) {
+            int ind = neuronLayers.size() - 1 - k; //чтобы индексы шли от нуля
+            df.add(new double[neuronLayers.get(k).getCountoutput()]); // dY/dS
+            double[] sum = new double[neuronLayers.get(k).getCountInput()];
+            for (int j = 0; j < neuronLayers.get(k).getCountoutput(); j++) {
+                //если это последний уровень, то только здесь считается ошибка общего выхода,
+                // а так же начальное значение "суммы" ("сумма" - это обратно распространяемая ошибка)
+                // dW считается не так как на остальных слоях
+                if (k == neuronLayers.size() - 1) {
+                    error[j] = trueOutput.get(j) - neuronLayers.get(k).getOutput().get(j);
+                    df.get(ind)[j] = computeDiffSigmoida(A, neuronLayers.get(k).getOutput().get(j));
+                    for (int m = 0; m < neuronLayers.get(k).getCountInput() - 1; m++) {
+                        neuronLayers.get(k).getDeltaWeightCoef()[j][m] = error[j] * df.get(ind)[j] * neuronLayers.get(k).getInput().get(m);
+                        sum[m] += error[j] * df.get(ind)[j] * neuronLayers.get(k).getWeightCoef()[j][m + 1];
+                    }
+                    //если уровень не последний
+                    //"сумма" считается на основании предыдущих "сумм"
+                }else {
+                    df.get(ind)[j] = computeDiffSigmoida(A, neuronLayers.get(k).getOutput().get(j+1));
+                    for (int m = 0; m < neuronLayers.get(k).getCountInput() - 1; m++) {
+                        neuronLayers.get(k).getDeltaWeightCoef()[j][m] = df.get(ind)[j] * neuronLayers.get(k).getInput().get(m) * sums.get(ind - 1)[j];
+                        sum[m] += sums.get(ind - 1)[j] * df.get(ind)[j] * neuronLayers.get(k).getWeightCoef()[j][m + 1];
+                    }
+                }
+            }
+            sums.add(sum);
+        }
+    }
 
     public void teach(List<InputOutputSignal> teachingSignals) {
         double dopError = 10000;
         do {
-
-            List<List<Double>> outputs = new ArrayList<>();
-
             for (int i = 0; i < teachingSignals.size(); i++) {
                 List<Double> input = new ArrayList<>();
                 input.add(1.0);// потому что у0=1 нужно только на входном и промежуточных слоях
                 input.addAll(teachingSignals.get(i).getInput());
+
                 //прямой ход
                 doNeuronWebGeDirectMove(input);
-
                 //обратное распространение ошибки
-                double[] error = new double[neuronLayers.get(neuronLayers.size() - 1).getCountoutput()]; //количество ошибок равно количеству выходов последнего слоя
-                List<double[]> df = new ArrayList<>();
-                List<double[]> sums = new ArrayList<>();
-                for (int k = neuronLayers.size() - 1; k >= 0; k--) {
-                    int ind = neuronLayers.size() - 1 - k; //чтобы индексы шли от нуля
-                    df.add(new double[neuronLayers.get(k).getCountoutput()]); // dY/dS
-                    double[] sum = new double[neuronLayers.get(k).getCountInput()];
-                    for (int j = 0; j < neuronLayers.get(k).getCountoutput(); j++) {
-                        if (k == neuronLayers.size() - 1) { //если это последний уровень, то только здесь считается ошибка общего выхода
-                            error[j] = teachingSignals.get(i).getOutput().get(j) - neuronLayers.get(k).getOutput().get(j);
+                doBackPropagationError(teachingSignals.get(i).getOutput());
 
-                        }
-                        int l = (k == neuronLayers.size() - 1) ? j : j + 1; // если слой последний то выходные значения нужно брать с 1 элемента, чтобы не трогать нулевой выход который равен 1
-                        df.get(ind)[j] = computeDiffSigmoida(A, neuronLayers.get(k).getOutput().get(l));
-
-                        if (k == neuronLayers.size() - 1) {
-                            for (int m = 0; m < neuronLayers.get(k).getCountInput() - 1; m++) {
-                                neuronLayers.get(k).getDeltaWeightCoef()[j][m] = error[j] * df.get(ind)[j] * neuronLayers.get(k).getInput().get(m);
-                                sum[m] += error[j] * df.get(ind)[j] * neuronLayers.get(k).getWeightCoef()[j][m + 1];
-                            }
-                        } else {
-                            for (int m = 0; m < neuronLayers.get(k).getCountInput() - 1; m++) {
-
-                                neuronLayers.get(k).getDeltaWeightCoef()[j][m] = df.get(ind)[j] * neuronLayers.get(k).getInput().get(m) * sums.get(ind - 1)[j];
-                                sum[m] += sums.get(ind - 1)[j] * df.get(ind)[j] * neuronLayers.get(k).getWeightCoef()[j][m + 1];
-                            }
-                        }
-                    }
-                    sums.add(sum);
-                }
                 //обновление коэффициентов
                 for (int k = 0; k < neuronLayers.size(); k++) {
                     for (int n = 0; n < neuronLayers.get(k).getCountoutput(); n++) {
@@ -132,7 +135,8 @@ public class Perseptron {
 
         System.out.println("действиетльное значение: " + signal.getOutput());
         System.out.println("Расчетное значение: " + neuronLayers.get(neuronLayers.size() - 1));
-        System.out.println(countErrors);
+        System.out.println("Количество ошибок: " + countErrors);
+        System.out.println();
 
 
     }
